@@ -198,6 +198,9 @@ private:
   /// Time in milliseconds before an unperformed task expires (0 == infinite).
   int64_t taskExpireTime_;
 
+  ///// user added timeout of addTask operation
+  int64_t addTaskTimeout_;
+
   /**
    * Hysteresis for overload state.  This is the fraction of the overload
    * value that needs to be reached before the overload state is cleared;
@@ -289,6 +292,7 @@ private:
     maxConnections_ = MAX_CONNECTIONS;
     maxFrameSize_ = MAX_FRAME_SIZE;
     taskExpireTime_ = 0;
+    addTaskTimeout_ = 0;
     overloadHysteresis_ = 0.8;
     overloadAction_ = T_OVERLOAD_NO_ACTION;
     writeBufferDefaultSize_ = WRITE_BUFFER_DEFAULT_SIZE;
@@ -422,7 +426,8 @@ public:
   bool isThreadPoolProcessing() const { return threadPoolProcessing_; }
 
   void addTask(stdcxx::shared_ptr<Runnable> task) {
-    threadManager_->add(task, 0LL, taskExpireTime_);
+    //threadManager_->add(task, 0LL, taskExpireTime_);
+    threadManager_->add(task, addTaskTimeout_, taskExpireTime_);
   }
 
   /**
@@ -563,6 +568,11 @@ public:
    * @param taskExpireTime a 64-bit time in milliseconds.
    */
   void setTaskExpireTime(int64_t taskExpireTime) { taskExpireTime_ = taskExpireTime; }
+
+  int64_t getAddTaskTimeout() const { return addTaskTimeout_; }
+
+  ///// user add addTaskTimeout_ in ms
+  void setAddTaskTimeout(int64_t addTaskTimeout) { addTaskTimeout_ = addTaskTimeout; }
 
   /**
    * Determine if the server is currently overloaded.
