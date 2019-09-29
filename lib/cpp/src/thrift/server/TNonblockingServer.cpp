@@ -290,7 +290,10 @@ public:
 
   /// Force connection shutdown for this connection.
   void forceClose() {
-    appState_ = APP_CLOSE_CONNECTION;
+    //appState_ = APP_CLOSE_CONNECTION;
+    ///// user add APP_WAIT_TASK
+    appState_ = APP_WAIT_TASK;
+
     if (!notifyIOThread()) {
       server_->decrementActiveProcessors();
       close();
@@ -628,7 +631,20 @@ void TNonblockingServer::TConnection::transition() {
         server_->decrementActiveProcessors();
         close();
       } catch (TimedOutException& to) {
-        GlobalOutput.printf("[ERROR] TimedOutException: Server::process() %s", to.what());
+        ///// user add TimedOutException
+        GlobalOutput.printf("[ERROR] TimedOutException: Server::process() %s, "
+                            "go to LABEL_APP_WAIT from APP_READ_REQUEST!", to.what());
+        //server_->decrementActiveProcessors();
+        //close();
+        goto LABEL_APP_WAIT;
+      } catch (TooManyPendingTasksException& mt) {
+        ///// user add TooManyPendingTasksException
+        GlobalOutput.printf("[ERROR] TooManyPendingTasksException: Server::process() %s, "
+                            "go to LABEL_APP_WAIT from APP_READ_REQUEST!", mt.what());
+        goto LABEL_APP_WAIT;
+      } catch (...) {
+        ///// user add unknown exception
+        GlobalOutput.printf("[ERROR] addTask unknown exception");
         server_->decrementActiveProcessors();
         close();
       }
@@ -668,6 +684,8 @@ void TNonblockingServer::TConnection::transition() {
   // Intentionally fall through here, the call to process has written into
   // the writeBuffer_
 
+  ///// user add LABEL_APP_WAIT
+  LABEL_APP_WAIT:
   case APP_WAIT_TASK:
     // We have now finished processing a task and the result has been written
     // into the outputTransport_, so we grab its contents and place them into
@@ -695,6 +713,18 @@ void TNonblockingServer::TConnection::transition() {
       setWrite();
 
       return;
+    } else {
+      ///// user add send empty result
+      GlobalOutput.printf("[WARN] go to LABEL_APP_INIT from APP_WAIT_TASK! writeBufferSize_: %d", writeBufferSize_);
+      printf("exception writeBufferSize_: %d, app state: %d, socket state: %d\n", writeBufferSize_, appState_, socketState_);
+
+      writeBufferSize_ = 4;
+      writeBufferPos_ = 0;
+      socketState_ = SOCKET_SEND;
+      int32_t frameSize = (int32_t)htonl(0);
+      memcpy(writeBuffer_, &frameSize, 4);
+      appState_ = APP_SEND_RESULT;
+      setWrite();
     }
 
     // In this case, the request was oneway and we should fall through
