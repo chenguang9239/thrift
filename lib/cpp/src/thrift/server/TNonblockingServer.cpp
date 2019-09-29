@@ -103,7 +103,8 @@ enum TAppState {
   APP_READ_REQUEST,
   APP_WAIT_TASK,
   APP_SEND_RESULT,
-  APP_CLOSE_CONNECTION
+  APP_CLOSE_CONNECTION,
+  APP_EMPTY_RESULT ///// user add APP_EMPTY_RESULT
 };
 
 /**
@@ -291,8 +292,8 @@ public:
   /// Force connection shutdown for this connection.
   void forceClose() {
     //appState_ = APP_CLOSE_CONNECTION;
-    ///// user add APP_WAIT_TASK
-    appState_ = APP_WAIT_TASK;
+    ///// user add APP_EMPTY_RESULT
+    appState_ = APP_EMPTY_RESULT;
 
     if (!notifyIOThread()) {
       server_->decrementActiveProcessors();
@@ -589,6 +590,27 @@ void TNonblockingServer::TConnection::transition() {
   // Switch upon the state that we are currently in and move to a new state
   switch (appState_) {
 
+   ///// user add APP_EMPTY_RESULT
+   LABEL_APP_EMPTY_RESULT:
+   case APP_EMPTY_RESULT:
+     server_->decrementActiveProcessors();
+     outputTransport_->getBuffer(&writeBuffer_, &writeBufferSize_);
+     if (writeBufferSize_ <= 4) {
+       GlobalOutput.printf("[WARN] return empty frame, writeBufferSize_: %d", writeBufferSize_);
+
+       writeBufferSize_ = 4;
+       writeBufferPos_ = 0;
+       socketState_ = SOCKET_SEND;
+       int32_t frameSize = (int32_t)htonl(0);
+       memcpy(writeBuffer_, &frameSize, 4);
+       appState_ = APP_SEND_RESULT;
+       setWrite();
+       return;
+     } else {
+       GlobalOutput.printf("[WARN] In APP_EMPTY_RESULT but writeBufferSize_: %d, go to LABEL_APP_WAIT", writeBufferSize_);
+       goto LABEL_APP_WAIT;
+     }
+
   case APP_READ_REQUEST:
     // We are done reading the request, package the read buffer into transport
     // and get back some data from the dispatch function
@@ -633,15 +655,15 @@ void TNonblockingServer::TConnection::transition() {
       } catch (TimedOutException& to) {
         ///// user add TimedOutException
         GlobalOutput.printf("[ERROR] TimedOutException: Server::process() %s, "
-                            "go to LABEL_APP_WAIT from APP_READ_REQUEST!", to.what());
+                            "go to LABEL_APP_EMPTY_RESULT from APP_READ_REQUEST!", to.what());
         //server_->decrementActiveProcessors();
         //close();
-        goto LABEL_APP_WAIT;
+        goto LABEL_APP_EMPTY_RESULT;
       } catch (TooManyPendingTasksException& mt) {
         ///// user add TooManyPendingTasksException
         GlobalOutput.printf("[ERROR] TooManyPendingTasksException: Server::process() %s, "
-                            "go to LABEL_APP_WAIT from APP_READ_REQUEST!", mt.what());
-        goto LABEL_APP_WAIT;
+                            "go to LABEL_APP_EMPTY_RESULT from APP_READ_REQUEST!", mt.what());
+        goto LABEL_APP_EMPTY_RESULT;
       } catch (...) {
         ///// user add unknown exception
         GlobalOutput.printf("[ERROR] addTask unknown exception");
@@ -713,18 +735,6 @@ void TNonblockingServer::TConnection::transition() {
       setWrite();
 
       return;
-    } else {
-      ///// user add send empty result
-      GlobalOutput.printf("[WARN] go to LABEL_APP_INIT from APP_WAIT_TASK! writeBufferSize_: %d", writeBufferSize_);
-      printf("exception writeBufferSize_: %d, app state: %d, socket state: %d\n", writeBufferSize_, appState_, socketState_);
-
-      writeBufferSize_ = 4;
-      writeBufferPos_ = 0;
-      socketState_ = SOCKET_SEND;
-      int32_t frameSize = (int32_t)htonl(0);
-      memcpy(writeBuffer_, &frameSize, 4);
-      appState_ = APP_SEND_RESULT;
-      setWrite();
     }
 
     // In this case, the request was oneway and we should fall through
