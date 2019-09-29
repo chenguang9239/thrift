@@ -315,8 +315,15 @@ public:
           manager_->mutex_.lock();
 
         } else if (manager_->expireCallback_) {
+          // user add releasing the lock
+          manager_->mutex_.unlock();
+
           // The only other state the task could have been in is TIMEDOUT (see above)
           manager_->expireCallback_(task->getRunnable());
+
+          // user add re-acquire the lock
+          manager_->mutex_.lock();
+
           manager_->expiredCount_++;
         }
       }
