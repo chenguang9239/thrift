@@ -59,6 +59,7 @@ public:
       idleCount_(0),
       pendingTaskCountMax_(0),
       expiredCount_(0),
+      addTaskTimeoutCount_(0),
       state_(ThreadManager::UNINITIALIZED),
       monitor_(&mutex_),
       maxMonitor_(&mutex_),
@@ -115,6 +116,12 @@ public:
     return expiredCount_;
   }
 
+  ///// user add addTaskTimeoutCount
+  size_t addTaskTimeoutCount() {
+    Guard g(addTaskTimeoutCountMutex_);
+    return addTaskTimeoutCount_;
+  }
+
   void pendingTaskCountMax(const size_t value) {
     Guard g(mutex_);
     pendingTaskCountMax_ = value;
@@ -157,6 +164,10 @@ private:
   size_t pendingTaskCountMax_;
   size_t expiredCount_;
   ExpireCallback expireCallback_;
+
+  ///// user add addTaskTimeoutCount_
+  Mutex addTaskTimeoutCountMutex_;
+  size_t addTaskTimeoutCount_;
 
   ThreadManager::STATE state_;
   shared_ptr<ThreadFactory> threadFactory_;
@@ -459,6 +470,10 @@ void ThreadManager::Impl::add(shared_ptr<Runnable> value, int64_t timeout, int64
   Guard g(mutex_, timeout);
 
   if (!g) {
+    {
+      Guard g1(addTaskTimeoutCountMutex_);
+      ++addTaskTimeoutCount_;
+    }
     throw TimedOutException();
   }
 

@@ -142,6 +142,9 @@ public:
    */
   virtual size_t expiredTaskCount() = 0;
 
+  ///// user add addTaskTimeoutCount
+  virtual size_t addTaskTimeoutCount() = 0;
+
   /**
    * Adds a task to be executed at some time in the future by a worker thread.
    *
