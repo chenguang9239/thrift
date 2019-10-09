@@ -122,6 +122,11 @@ public:
     return addTaskTimeoutCount_;
   }
 
+  void increaseAddTaskTimeoutCount(size_t step = 1) {
+    Guard g1(addTaskTimeoutCountMutex_);
+    addTaskTimeoutCount_ += step;
+  }
+
   void pendingTaskCountMax(const size_t value) {
     Guard g(mutex_);
     pendingTaskCountMax_ = value;
@@ -470,10 +475,8 @@ void ThreadManager::Impl::add(shared_ptr<Runnable> value, int64_t timeout, int64
   Guard g(mutex_, timeout);
 
   if (!g) {
-    {
-      Guard g1(addTaskTimeoutCountMutex_);
-      ++addTaskTimeoutCount_;
-    }
+    ///// user add increaseAddTaskTimeoutCount
+    increaseAddTaskTimeoutCount();
     throw TimedOutException();
   }
 
@@ -490,11 +493,32 @@ void ThreadManager::Impl::add(shared_ptr<Runnable> value, int64_t timeout, int64
 
   if (pendingTaskCountMax_ > 0 && (tasks_.size() >= pendingTaskCountMax_)) {
     if (canSleep() && timeout >= 0) {
+      ///// user add retry
+      short retry = 0;
+
       while (pendingTaskCountMax_ > 0 && tasks_.size() >= pendingTaskCountMax_) {
-        // This is thread safe because the mutex is shared between monitors.
-        maxMonitor_.wait(timeout);
+        ///// user add checking retry
+        if (++retry > 10) {
+          GlobalOutput.printf("[ERROR] add task to queue retry times: %d", retry);
+          increaseAddTaskTimeoutCount();
+          throw TooManyPendingTasksException();
+        }
+        ///// user add try-catch
+        try {
+          // This is thread safe because the mutex is shared between monitors.
+          maxMonitor_.wait(timeout);
+        } catch (TimedOutException &to) {
+          GlobalOutput.printf("[ERROR] wait for maxMonitor_ timeout: %s", to.what());
+          increaseAddTaskTimeoutCount();
+          throw TooManyPendingTasksException();
+        } catch (TException &other) {
+          GlobalOutput.printf("[ERROR] wait for maxMonitor_ error: %s", other.what());
+          throw other;
+        }
       }
     } else {
+      ///// user add increaseAddTaskTimeoutCount
+      increaseAddTaskTimeoutCount();
       throw TooManyPendingTasksException();
     }
   }
